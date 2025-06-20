@@ -215,7 +215,7 @@
                         Documentação interativa completa com todos os endpoints, 
                         parâmetros e exemplos de uso.
                     </p>
-                    <a href="/docs/" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-300">
+                    <a href="/swagger.json" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-300">
                         <i class="fas fa-external-link-alt mr-2"></i>
                         Acessar Swagger
                     </a>
@@ -281,10 +281,37 @@
                             <i class="fab fa-github mr-2"></i>
                             GitHub
                         </a>
-                        <a href="/docs/" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-300">
+                        <a href="/swagger.json" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-300">
                             <i class="fas fa-book mr-2"></i>
                             Documentação
                         </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Seção de Teste Rápido -->
+    <section class="py-16 bg-blue-50">
+        <div class="container mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">
+                <i class="fas fa-play mr-3 text-blue-500"></i>
+                Teste a API Agora
+            </h2>
+            
+            <div class="max-w-2xl mx-auto text-center">
+                <p class="text-gray-600 mb-6">
+                    Teste rapidamente se a API está funcionando:
+                </p>
+                
+                <div class="bg-white rounded-lg p-6 shadow-lg">
+                    <button onclick="testAPI()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition duration-300 mr-4">
+                        <i class="fas fa-play mr-2"></i>
+                        Testar Health Check
+                    </button>
+                    
+                    <div id="api-result" class="mt-4 p-4 bg-gray-100 rounded hidden">
+                        <pre id="result-content"></pre>
                     </div>
                 </div>
             </div>
@@ -306,7 +333,7 @@
                 <div>
                     <h3 class="text-xl font-semibold mb-4">Links Úteis</h3>
                     <ul class="space-y-2 text-gray-400">
-                        <li><a href="/docs/" class="hover:text-white transition duration-300">Documentação</a></li>
+                        <li><a href="/swagger.json" class="hover:text-white transition duration-300">Documentação</a></li>
                         <li><a href="/health" class="hover:text-white transition duration-300">Status da API</a></li>
                         <li><a href="https://github.com/seu-usuario/flask-super-api" class="hover:text-white transition duration-300">GitHub</a></li>
                     </ul>
@@ -338,5 +365,25 @@
             API Online
         </div>
     </div>
+
+    <script>
+async function testAPI() {
+    const resultDiv = document.getElementById('api-result');
+    const resultContent = document.getElementById('result-content');
+    
+    try {
+        const response = await fetch('/health');
+        const data = await response.json();
+        
+        resultContent.textContent = JSON.stringify(data, null, 2);
+        resultDiv.classList.remove('hidden');
+        resultDiv.className = 'mt-4 p-4 bg-green-100 rounded';
+    } catch (error) {
+        resultContent.textContent = 'Erro: ' + error.message;
+        resultDiv.classList.remove('hidden');
+        resultDiv.className = 'mt-4 p-4 bg-red-100 rounded';
+    }
+}
+</script>
 </body>
 </html>

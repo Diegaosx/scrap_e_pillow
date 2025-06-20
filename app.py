@@ -4,7 +4,7 @@ import boto3
 import io
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 from urllib.parse import urlparse, urljoin, quote, urlencode
-from flask import Flask, request, jsonify, send_file, after_this_request, send_from_directory
+from flask import Flask, request, jsonify, send_file, after_this_request, send_from_directory, render_template, redirect
 from bs4 import BeautifulSoup
 import requests
 import json
@@ -394,23 +394,15 @@ def health_check():
         ]
     })
 
+@app.route('/home', methods=['GET'])
+def home():
+    """Página inicial com interface HTML"""
+    return render_template('index.html')
+
 @app.route('/', methods=['GET'])
 def index():
-    """Página inicial da API"""
-    return jsonify({
-        "message": "Flask Super API - Repositório Unificado",
-        "version": "2.0.0",
-        "endpoints": {
-            "health": "/health",
-            "upload": "/upload",
-            "image_processing": "/process-image",
-            "web_scraping": "/scrape",
-            "telegram": "/grupos-admin",
-            "youtube": "/youtube/search",
-            "charts": "/generate_chart"
-        },
-        "documentation": "https://github.com/seu-usuario/flask-super-api"
-    })
+    """Redirecionar para a página inicial"""
+    return redirect('/home')
 
 # ================================
 # ROTAS DE UPLOAD E PROCESSAMENTO BÁSICO
@@ -706,57 +698,6 @@ def imagem_com_imagem():
 
     if img.mode == 'RGBA':
         img = img.convert('RGB')
-
-    temp_path = image_name
-    img.save(temp_path)
-
-    @after_this_request
-    def remove_file(response):
-        try:
-            os.remove(temp_path)
-        except Exception as error:
-            app.logger.error("Erro ao remover o arquivo temporário", error)
-        return response
-
-    response = send_file(temp_path, mimetype='image/jpeg')
-    response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
-    return response
-
-@app.route('/centralizado', methods=['POST'])
-def centralizado():
-    data = request.json
-    image_url = data.get('url', '')
-    image_name = data.get('image_name', 'modelo.jpg')
-
-    font_path_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-    titulo_font_size = int(data.get('titulo_font_size', 20))
-    data_font_size = int(data.get('data_font_size', 20))
-    titulo_color = tuple(int(data.get('titulo_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
-    data_color = tuple(int(data.get('data_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
-    titulo_background_color = tuple(int(data.get('titulo_background_color', '#000000').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
-
-    response = requests.get(image_url)
-    img = Image.open(BytesIO(response.content))
-    img = img.resize((1200, 752))
-
-    draw = ImageDraw.Draw(img)
-
-    font_titulo = ImageFont.truetype(font_path_bold, size=titulo_font_size)
-    font_data = ImageFont.truetype(font_path_bold, size=data_font_size)
-
-    titulo_position = (img.width // 2, 20)
-    data_position = (img.width // 2, 50)
-
-    draw_text_with_background(draw, data['titulo'], titulo_position, font_titulo, titulo_color, titulo_background_color, data.get('titulo_padding', [10, 5]), int(data.get('titulo_max_chars', 30)))
-    draw_text_with_background(draw, data['data'], data_position, font_data, data_color, titulo_background_color, data.get('titulo_padding', [10, 5]), int(data.get('titulo_max_chars', 30)))
-
-    secondary_img_url = data.get('secondary_image_url')
-    if secondary_img_url:
-        sec_img_response = requests.get(secondary_img_url)
-        sec_img = Image.open(BytesIO(sec_img_response.content))
-        sec_img = sec_img.resize((100, 100), Image.Resampling.LANCZOS)
-        sec_img_position = (300, 300)
-        img.paste(sec_img, sec_img_position, sec_img if sec_img.mode == 'RGBA' else None)
 
     temp_path = image_name
     img.save(temp_path)
