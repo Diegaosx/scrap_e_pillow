@@ -42,7 +42,6 @@ from telegram import Bot, Update
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import base64
-from deepface import DeepFace
 from datetime import datetime
 import pytz
 import tempfile
@@ -365,6 +364,17 @@ def save_plot_to_base64():
     image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
     plt.close()
     return image_base64
+
+# Comentar as importações que causam conflito
+# from deepface import DeepFace
+
+# Adicionar no início do arquivo, após as outras importações:
+try:
+    from deepface import DeepFace
+    DEEPFACE_AVAILABLE = True
+except ImportError:
+    DEEPFACE_AVAILABLE = False
+    print("DeepFace não disponível. Funcionalidade de detecção de gênero desabilitada.")
 
 # ================================
 # ROTAS DE SAÚDE E INFORMAÇÕES
@@ -715,15 +725,15 @@ def imagem_com_imagem():
 @app.route('/centralizado', methods=['POST'])
 def centralizado():
     data = request.json
-    image_url = data['url']
+    image_url = data.get('url', '')
     image_name = data.get('image_name', 'modelo.jpg')
 
     font_path_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
     titulo_font_size = int(data.get('titulo_font_size', 20))
     data_font_size = int(data.get('data_font_size', 20))
-    titulo_color = tuple(int(data.get('titulo_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-    data_color = tuple(int(data.get('data_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-    titulo_background_color = tuple(int(data.get('titulo_background_color', '#000000').lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+    titulo_color = tuple(int(data.get('titulo_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
+    data_color = tuple(int(data.get('data_color', '#FFFFFF').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
+    titulo_background_color = tuple(int(data.get('titulo_background_color', '#000000').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)))
 
     response = requests.get(image_url)
     img = Image.open(BytesIO(response.content))
@@ -956,6 +966,9 @@ def imagem_binaria():
 
 @app.route('/detect-gender', methods=['POST'])
 def detect_gender():
+    if not DEEPFACE_AVAILABLE:
+        return jsonify({"error": "DeepFace não está disponível nesta instalação"}), 503
+    
     try:
         data = request.json
         image_url = data.get('url')

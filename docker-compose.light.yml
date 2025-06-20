@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  flask-super-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile.light
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./uploads:/home/app/uploads
+      - ./logs:/home/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    driver: bridge
