@@ -23,8 +23,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from requests_html import HTMLSession
 import asyncio
 from requests_html import AsyncHTMLSession
-from google.auth.transport.requests import Request as GoogleAuthRequest
-from google.oauth2 import service_account
+# Importações opcionais do Google Cloud
+try:
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    from google.oauth2 import service_account
+    GOOGLE_CLOUD_AVAILABLE = True
+except ImportError:
+    GOOGLE_CLOUD_AVAILABLE = False
+    print("Google Cloud não disponível. Funcionalidades de TTS desabilitadas.")
 from io import BytesIO
 import hashlib
 import subprocess
@@ -1514,6 +1520,7 @@ def process_audio():
 
 @app.route('/narracao', methods=['POST'])
 def narracao():
+    
     data = request.get_json()
     text = data.get("text")
     filename = data.get("filename", "narracao.mp3")
