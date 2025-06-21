@@ -1395,6 +1395,220 @@ def info_post():
         return jsonify({"error": str(e)}), 500
 
 # ================================
+# ROTAS DE WEB SCRAPING ESPECÍFICAS
+# ================================
+
+@app.route('/scrape_first_li_link', methods=['POST'])
+def scrape_first_li_link():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        first_li = soup.find('li')
+        if not first_li:
+            return jsonify({"error": "No 'li' tags found on the page"}), 404
+
+        link_element = first_li.find('a', href=True)
+        if link_element:
+            link = link_element.get('href', 'Href not found')
+            if not link.startswith(('http', 'https')):
+                link = complete_url(base_url, link)
+            return jsonify([{"link": link}])
+        
+        return jsonify({"error": "No link found in the first 'li'"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/categorias_novo', methods=['POST'])
+def categorias_novo():
+    data = request.json
+    url = data.get('url')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            article = soup.find('article', class_='widget-24x1-ultimas__article data-tb-region-item')
+            if article:
+                link = article.find('a', href=True)
+                if link and link['href']:
+                    full_link = urljoin(url, link['href'])
+                    return jsonify({"link": full_link})
+                else:
+                    return jsonify({"error": "Link not found inside the article"}), 404
+            else:
+                return jsonify({"error": "Article with specified class not found"}), 404
+        else:
+            return jsonify({"error": f"Failed to retrieve URL, status code {response.status_code}"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/scrape_website', methods=['POST'])
+def scrape_website():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})
+        
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})
+        
+        return jsonify({"error": "Link not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/scrape_website_adaptado', methods=['POST'])
+def scrape_website_adaptado():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    api_key = "8a575bf7b24290865c93c646f1a476fa"
+    scraper_api_url = "https://api.scraperapi.com/"
+    params = {
+        "api_key": api_key,
+        "url": url,
+    }
+
+    try:
+        response = requests.get(scraper_api_url, params=params)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})
+        
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})
+        
+        return jsonify({"error": "Link not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/scrape_with_api', methods=['POST'])
+def scrape_with_api():
+    data = request.json
+    url = data.get('url', '')
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    api_key = "8a575bf7b24290865c93c646f1a476fa"
+    scraper_api_url = "https://api.scraperapi.com/"
+    params = {
+        "api_key": api_key,
+        "url": url,
+    }
+
+    try:
+        response = requests.get(scraper_api_url, params=params)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        container = soup.find('div', attrs={'data-theme-key': 'four-across-layout'})
+        if not container:
+            return jsonify({"error": "Container with class 'four-across-layout' not found"}), 404
+
+        link_element = container.find('a', attrs={'data-vars-ga-outbound-link': True})
+        if not link_element:
+            return jsonify({"error": "No element with 'data-vars-ga-outbound-link' found"}), 404
+
+        outbound_link = link_element.get('data-vars-ga-outbound-link')
+        if not outbound_link.startswith(('http', 'https')):
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            outbound_link = urljoin(base_url, outbound_link)
+
+        return jsonify({"link": outbound_link})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+# ================================
 # ROTAS DO TELEGRAM
 # ================================
 
