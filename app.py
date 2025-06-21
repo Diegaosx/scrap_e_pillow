@@ -23,17 +23,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from requests_html import HTMLSession
 import asyncio
 from requests_html import AsyncHTMLSession
-# Importações opcionais do Google Cloud
-try:
-    from google.auth.transport.requests import Request as GoogleAuthRequest
-    from google.oauth2 import service_account
-    GOOGLE_CLOUD_AVAILABLE = True
-except ImportError:
-    GOOGLE_CLOUD_AVAILABLE = False
-    print("Google Cloud não disponível. Funcionalidades de TTS desabilitadas.")
 from io import BytesIO
 import hashlib
-import subprocess
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from Crypto.Cipher import AES
@@ -66,10 +57,10 @@ CORS(app)
 
 # Rate limiting
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
 )
+limiter.init_app(app)
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
