@@ -658,6 +658,105 @@ def process_image():
     response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
     return response
 
+@app.route('/process-image-2', methods=['POST'])
+def process_image_2():
+    """Processamento avançado de imagem com múltiplos textos e imagem secundária com border radius"""
+    try:
+        data = request.json
+        image_url = data['url']
+        image_name = data.get('image_name', 'processed_image_2.jpg')
+        
+        # Baixar imagem principal
+        response = requests.get(image_url)
+        img = Image.open(BytesIO(response.content))
+        
+        # Converter para RGB se necessário
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        draw = ImageDraw.Draw(img)
+        font_path_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        
+        # Processar textos (texto1 a texto5)
+        for i in range(1, 6):
+            texto_key = f'texto{i}'
+            if texto_key in data:
+                texto = data[texto_key]
+                position = data.get(f'{texto_key}_position', [0, 0])
+                font_size = int(data.get(f'{texto_key}_font_size', 14))
+                max_chars = int(data.get(f'{texto_key}_max_chars', 50))
+                color = data.get(f'{texto_key}_color', '#000000')
+                
+                # Converter cor hex para RGB
+                color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                
+                # Carregar fonte
+                try:
+                    font = ImageFont.truetype(font_path_bold, size=font_size)
+                except:
+                    font = ImageFont.load_default()
+                
+                # Limitar texto se necessário
+                if len(texto) > max_chars:
+                    texto = texto[:max_chars] + '...'
+                
+                # Desenhar texto
+                draw.text(tuple(position), texto, fill=color_rgb, font=font)
+        
+        # Processar segunda imagem se fornecida
+        if 'imagem2_url' in data:
+            try:
+                img2_response = requests.get(data['imagem2_url'])
+                img2 = Image.open(BytesIO(img2_response.content))
+                
+                # Redimensionar segunda imagem
+                img2_size = tuple(data.get('imagem2_size', [100, 100]))
+                img2 = img2.resize(img2_size, Image.Resampling.LANCZOS)
+                
+                # Aplicar border radius se especificado
+                border_radius = data.get('imagem2_border_radius', 0)
+                if border_radius > 0:
+                    # Criar máscara circular
+                    mask = Image.new('L', img2_size, 0)
+                    mask_draw = ImageDraw.Draw(mask)
+                    mask_draw.ellipse([0, 0, img2_size[0], img2_size[1]], fill=255)
+                    
+                    # Aplicar máscara
+                    img2_with_alpha = img2.convert('RGBA')
+                    img2_with_alpha.putalpha(mask)
+                    
+                    # Posição da segunda imagem
+                    img2_position = tuple(data.get('imagem2_position', [0, 0]))
+                    
+                    # Colar imagem com transparência
+                    img.paste(img2_with_alpha, img2_position, img2_with_alpha)
+                else:
+                    # Sem border radius, colar normalmente
+                    img2_position = tuple(data.get('imagem2_position', [0, 0]))
+                    img.paste(img2, img2_position)
+                    
+            except Exception as e:
+                print(f"Erro ao processar segunda imagem: {e}")
+        
+        # Salvar imagem temporariamente
+        temp_path = image_name
+        img.save(temp_path, 'JPEG', quality=95)
+        
+        @after_this_request
+        def remove_file(response):
+            try:
+                os.remove(temp_path)
+            except Exception as error:
+                app.logger.error("Erro ao remover o arquivo temporário", error)
+            return response
+        
+        response = send_file(temp_path, mimetype='image/jpeg')
+        response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/imagem-com-imagem', methods=['POST'])
 def imagem_com_imagem():
     data = request.json
@@ -1876,6 +1975,12 @@ def programacao_aracaju_streaming():
 # ================================
 # ROTAS FINAIS E EXECUÇÃO
 # ================================
+
+# Importar configurações do Swagger
+try:
+    import swagger_docs
+except ImportError:
+    print("Swagger docs não disponível")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
