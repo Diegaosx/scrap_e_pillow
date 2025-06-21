@@ -1191,34 +1191,60 @@ def analyze_image():
 # ROTAS DE WEB SCRAPING
 # ================================
 
-@app.route('/scrape', methods=['POST'])
-@limiter.limit("30 per minute")
+@@app.route('/scrape_website', methods=['POST'])
 def scrape_website():
-    """Web scraping genérico"""
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
     try:
-        data = request.json
-        url = data.get('url')
-        selector = data.get('selector', 'title')
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
         
-        if not url:
-            return jsonify({'error': 'URL é obrigatória'}), 400
-        
-        headers = {'User-Agent': random.choice(USER_AGENTS)}
-        response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Obtendo apenas a parte do protocolo e domínio da URL
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
         
-        elements = soup.select(selector)
-        results = [elem.get_text(strip=True) for elem in elements]
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})  # Retorne o primeiro link encontrado
         
-        return jsonify({
-            'url': url,
-            'selector': selector,
-            'results': results,
-            'count': len(results)
-        })
-    
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')  # Default to 'a' tag if not specified
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})  # Retorne o primeiro link encontrado
+        
+        return jsonify({"error": "Link not found"}), 404  # Retorne um erro se nenhum link for encontrado
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/extract-links', methods=['POST'])
 @limiter.limit("20 per minute")
