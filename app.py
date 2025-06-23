@@ -45,8 +45,9 @@ import pytz
 import tempfile
 import shutil
 from werkzeug.utils import secure_filename
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+# Comentar estas linhas:
+# from flask_limiter import Limiter
+# from flask_limiter.util import get_remote_address
 from flask_cors import CORS
 import mimetypes
 import textwrap
@@ -58,11 +59,12 @@ app = Flask(__name__)
 CORS(app)
 
 # Rate limiting
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"]
-)
-limiter.init_app(app)
+# Comentar estas linhas:
+# limiter = Limiter(
+#     key_func=get_remote_address,
+#     default_limits=["200 per day", "50 per hour"]
+# )
+# limiter.init_app(app)
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
@@ -423,7 +425,7 @@ def index():
 # ================================
 
 @app.route('/upload', methods=['POST'])
-@limiter.limit("10 per minute")
+#@limiter.limit("10 per minute")
 def upload_file():
     """Upload de arquivo básico"""
     try:
@@ -453,7 +455,7 @@ def upload_file():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/resize', methods=['POST'])
-@limiter.limit("20 per minute")
+#@limiter.limit("20 per minute")
 def resize_image_basic():
     """Redimensionamento básico de imagem"""
     try:
@@ -481,7 +483,7 @@ def resize_image_basic():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/add-text', methods=['POST'])
-@limiter.limit("15 per minute")
+#@limiter.limit("15 per minute")
 def add_text_to_image():
     """Adicionar texto a uma imagem"""
     try:
@@ -525,7 +527,7 @@ def add_text_to_image():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/convert', methods=['POST'])
-@limiter.limit("10 per minute")
+#@limiter.limit("10 per minute")
 def convert_image_format():
     """Converter formato de imagem"""
     try:
@@ -557,7 +559,7 @@ def convert_image_format():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/thumbnail', methods=['POST'])
-@limiter.limit("20 per minute")
+#@limiter.limit("20 per minute")
 def create_thumbnail():
     """Criar thumbnail de imagem"""
     try:
@@ -584,7 +586,7 @@ def create_thumbnail():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/watermark', methods=['POST'])
-@limiter.limit("10 per minute")
+#@limiter.limit("10 per minute")
 def add_watermark():
     """Adicionar marca d'água"""
     try:
@@ -1050,7 +1052,7 @@ def crop_center():
         left = (width - new_width) / 2
         top = (height - new_height) / 2
         right = (width + new_width) / 2
-        bottom = (height + new_height) / 2
+        bottom = (height - new_height) / 2
 
         img_cropped = img.crop((left, top, right, bottom))
         img_resized = img_cropped.resize((52, 52), Image.Resampling.LANCZOS)
@@ -1114,7 +1116,7 @@ def analyze_image():
 # ================================
 
 @app.route('/scrape', methods=['POST'])
-@limiter.limit("30 per minute")
+#@limiter.limit("30 per minute")
 def scrape_website():
     """Web scraping genérico"""
     try:
@@ -1143,7 +1145,7 @@ def scrape_website():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/extract-links', methods=['POST'])
-@limiter.limit("20 per minute")
+#@limiter.limit("20 per minute")
 def extract_links():
     """Extrair links de uma página"""
     try:
@@ -1176,6 +1178,62 @@ def extract_links():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/scrape_website', methods=['POST'])
+def scrape_website_specific():
+    """Web scraping específico com suporte a moneytimes.com.br e outros sites"""
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Obtendo apenas a parte do protocolo e domínio da URL
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})  # Retorne o primeiro link encontrado
+        
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')  # Default to 'a' tag if not specified
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})  # Retorne o primeiro link encontrado
+        
+        return jsonify({"error": "Link not found"}), 404  # Retorne um erro se nenhum link for encontrado
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/fragmentado', methods=['POST'])
 def fragmentado():
