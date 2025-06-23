@@ -1875,6 +1875,164 @@ def programacao_aracaju_streaming():
     
     return jsonify({"streaming_now": None})
 
+
+@app.route('/process-image-3', methods=['POST'])
+def process_image_3():
+    data = request.json
+    image_url = data['url']
+    image_name = data.get('image_name', 'modified_image.jpg')
+    
+    # Novo campo para o caminho da fonte (opcional)
+    font_path_bold = data.get('font_path_bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+
+    # Altura da linha geral (opcional)
+    global_line_height = int(data.get('line_height', 0))  # Padrão: 0 (será calculado dinamicamente)
+
+    # Alinhamento geral (opcional)
+    global_align = data.get('align', 'left')  # Padrão: 'left'
+
+    response = requests.get(image_url)
+    img = Image.open(BytesIO(response.content))
+    draw = ImageDraw.Draw(img)
+
+    # Adiciona textos dinamicamente
+    for i in range(1, 100):  # Limite de 100 textos
+        texto_key = f'texto{i}'
+        if texto_key in data:
+            texto = data[texto_key]
+            texto_position = data.get(f'{texto_key}_position', [0, 0])
+            texto_font_size = int(data.get(f'{texto_key}_font_size', 25))
+            texto_max_chars = int(data.get(f'{texto_key}_max_chars', 38))
+            texto_color = data.get(f'{texto_key}_color', '#FFFFFF')
+            texto_color = tuple(int(texto_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+            
+            # Define a altura da linha
+            line_height = global_line_height or int(texto_font_size * 1.2)  # Usa global_line_height ou padrão
+
+            # Carrega a fonte
+            font = ImageFont.truetype(font_path_bold, size=texto_font_size)
+
+            # Divide o texto em linhas, se necessário
+            lines = textwrap.wrap(texto, width=texto_max_chars)
+
+            # Calcula a largura total da imagem
+            image_width, _ = img.size
+
+            # Desenha cada linha com o espaçamento vertical e alinhamento
+            for line in lines:
+                # Obtém a largura do texto atual
+                text_width, _ = draw.textsize(line, font=font)
+
+                # Calcula a posição X com base no alinhamento
+                if global_align == 'center':
+                    x = (image_width - text_width) // 2
+                elif global_align == 'right':
+                    x = image_width - text_width - texto_position[0]
+                elif global_align == 'justified':
+                    # Justificado não é diretamente suportado pelo Pillow, então tratamos como left
+                    x = texto_position[0]
+                else:  # 'left' (padrão)
+                    x = texto_position[0]
+
+                # Desenha o texto na posição correta
+                draw.text(
+                    (x, texto_position[1]),  # Posição X e Y
+                    line,                   # Texto da linha
+                    font=font,              # Fonte
+                    fill=texto_color        # Cor do texto
+                )
+                # Atualiza a posição Y para a próxima linha
+                texto_position[1] += line_height
+
+    # Adiciona imagem2 (mesmo código anterior)
+    imagem2_url = data.get('imagem2_url')
+    if imagem2_url:
+        imagem2_response = requests.get(imagem2_url)
+        imagem2 = Image.open(BytesIO(imagem2_response.content))
+        imagem2_size = tuple(data.get('imagem2_size', [100, 100]))
+        imagem2 = imagem2.resize(imagem2_size, Image.Resampling.LANCZOS)
+        imagem2_position = tuple(data.get('imagem2_position', [300, 300]))
+        imagem2_border_radius = int(data.get('imagem2_border_radius', 0))
+        if imagem2_border_radius > 0:
+            imagem2 = add_border_radius(imagem2, imagem2_border_radius)
+        img.paste(imagem2, imagem2_position, imagem2)
+
+    # Salva a imagem temporariamente
+    temp_path = image_name
+    img.save(temp_path)
+
+    # Função para remover o arquivo temporário após a resposta
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.remove(temp_path)
+        except Exception as error:
+            app.logger.error("Erro ao remover o arquivo temporário", error)
+        return response
+
+    # Retorna a imagem como resposta
+    response = send_file(temp_path, mimetype='image/jpeg')
+    response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
+    return response
+
+
+@app.route('/process-image-2', methods=['POST'])
+def process_image_2():
+    data = request.json
+    image_url = data['url']
+    image_name = data.get('image_name', 'modified_image.jpg')
+    
+    # Novo campo para o caminho da fonte (opcional)
+    font_path_bold = data.get('font_path_bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
+
+    response = requests.get(image_url)
+    img = Image.open(BytesIO(response.content))
+    draw = ImageDraw.Draw(img)
+
+    # Adiciona textos dinamicamente
+    for i in range(1, 100):  # Limite de 100 textos
+        texto_key = f'texto{i}'
+        if texto_key in data:
+            texto = data[texto_key]
+            texto_position = data.get(f'{texto_key}_position', [0, 0])
+            texto_font_size = int(data.get(f'{texto_key}_font_size', 25))
+            texto_max_chars = int(data.get(f'{texto_key}_max_chars', 38))
+            texto_color = data.get(f'{texto_key}_color', '#FFFFFF')
+            texto_color = tuple(int(texto_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+            
+            # Usa o caminho da fonte fornecido ou o padrão
+            font = ImageFont.truetype(font_path_bold, size=texto_font_size)
+            draw_text(draw, texto, texto_position, font, texto_color, texto_max_chars)
+
+    # Adiciona imagem2 (mesmo código anterior)
+    imagem2_url = data.get('imagem2_url')
+    if imagem2_url:
+        imagem2_response = requests.get(imagem2_url)
+        imagem2 = Image.open(BytesIO(imagem2_response.content))
+        imagem2_size = tuple(data.get('imagem2_size', [100, 100]))
+        imagem2 = imagem2.resize(imagem2_size, Image.Resampling.LANCZOS)
+        imagem2_position = tuple(data.get('imagem2_position', [300, 300]))
+        imagem2_border_radius = int(data.get('imagem2_border_radius', 0))
+        if imagem2_border_radius > 0:
+            imagem2 = add_border_radius(imagem2, imagem2_border_radius)
+        img.paste(imagem2, imagem2_position, imagem2)
+
+    temp_path = image_name
+    img.save(temp_path)
+
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.remove(temp_path)
+        except Exception as error:
+            app.logger.error("Erro ao remover o arquivo temporário", error)
+        return response
+
+    response = send_file(temp_path, mimetype='image/jpeg')
+    response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
+    return response
+
+
 # ================================
 # ROTAS FINAIS E EXECUÇÃO
 # ================================
