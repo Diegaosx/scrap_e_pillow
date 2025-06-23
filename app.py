@@ -23,11 +23,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from requests_html import HTMLSession
 import asyncio
 from requests_html import AsyncHTMLSession
-from google.auth.transport.requests import Request as GoogleAuthRequest
-from google.oauth2 import service_account
 from io import BytesIO
 import hashlib
-import subprocess
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from Crypto.Cipher import AES
@@ -60,10 +57,10 @@ CORS(app)
 
 # Rate limiting
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
 )
+limiter.init_app(app)
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
@@ -661,6 +658,105 @@ def process_image():
     response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
     return response
 
+@app.route('/process-image-2', methods=['POST'])
+def process_image_2():
+    """Processamento avançado de imagem com múltiplos textos e imagem secundária com border radius"""
+    try:
+        data = request.json
+        image_url = data['url']
+        image_name = data.get('image_name', 'processed_image_2.jpg')
+        
+        # Baixar imagem principal
+        response = requests.get(image_url)
+        img = Image.open(BytesIO(response.content))
+        
+        # Converter para RGB se necessário
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        draw = ImageDraw.Draw(img)
+        font_path_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        
+        # Processar textos (texto1 a texto5)
+        for i in range(1, 6):
+            texto_key = f'texto{i}'
+            if texto_key in data:
+                texto = data[texto_key]
+                position = data.get(f'{texto_key}_position', [0, 0])
+                font_size = int(data.get(f'{texto_key}_font_size', 14))
+                max_chars = int(data.get(f'{texto_key}_max_chars', 50))
+                color = data.get(f'{texto_key}_color', '#000000')
+                
+                # Converter cor hex para RGB
+                color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                
+                # Carregar fonte
+                try:
+                    font = ImageFont.truetype(font_path_bold, size=font_size)
+                except:
+                    font = ImageFont.load_default()
+                
+                # Limitar texto se necessário
+                if len(texto) > max_chars:
+                    texto = texto[:max_chars] + '...'
+                
+                # Desenhar texto
+                draw.text(tuple(position), texto, fill=color_rgb, font=font)
+        
+        # Processar segunda imagem se fornecida
+        if 'imagem2_url' in data:
+            try:
+                img2_response = requests.get(data['imagem2_url'])
+                img2 = Image.open(BytesIO(img2_response.content))
+                
+                # Redimensionar segunda imagem
+                img2_size = tuple(data.get('imagem2_size', [100, 100]))
+                img2 = img2.resize(img2_size, Image.Resampling.LANCZOS)
+                
+                # Aplicar border radius se especificado
+                border_radius = data.get('imagem2_border_radius', 0)
+                if border_radius > 0:
+                    # Criar máscara circular
+                    mask = Image.new('L', img2_size, 0)
+                    mask_draw = ImageDraw.Draw(mask)
+                    mask_draw.ellipse([0, 0, img2_size[0], img2_size[1]], fill=255)
+                    
+                    # Aplicar máscara
+                    img2_with_alpha = img2.convert('RGBA')
+                    img2_with_alpha.putalpha(mask)
+                    
+                    # Posição da segunda imagem
+                    img2_position = tuple(data.get('imagem2_position', [0, 0]))
+                    
+                    # Colar imagem com transparência
+                    img.paste(img2_with_alpha, img2_position, img2_with_alpha)
+                else:
+                    # Sem border radius, colar normalmente
+                    img2_position = tuple(data.get('imagem2_position', [0, 0]))
+                    img.paste(img2, img2_position)
+                    
+            except Exception as e:
+                print(f"Erro ao processar segunda imagem: {e}")
+        
+        # Salvar imagem temporariamente
+        temp_path = image_name
+        img.save(temp_path, 'JPEG', quality=95)
+        
+        @after_this_request
+        def remove_file(response):
+            try:
+                os.remove(temp_path)
+            except Exception as error:
+                app.logger.error("Erro ao remover o arquivo temporário", error)
+            return response
+        
+        response = send_file(temp_path, mimetype='image/jpeg')
+        response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/imagem-com-imagem', methods=['POST'])
 def imagem_com_imagem():
     data = request.json
@@ -1095,34 +1191,60 @@ def analyze_image():
 # ROTAS DE WEB SCRAPING
 # ================================
 
-@app.route('/scrape', methods=['POST'])
-@limiter.limit("30 per minute")
+@@app.route('/scrape_website', methods=['POST'])
 def scrape_website():
-    """Web scraping genérico"""
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
     try:
-        data = request.json
-        url = data.get('url')
-        selector = data.get('selector', 'title')
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
         
-        if not url:
-            return jsonify({'error': 'URL é obrigatória'}), 400
-        
-        headers = {'User-Agent': random.choice(USER_AGENTS)}
-        response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Obtendo apenas a parte do protocolo e domínio da URL
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
         
-        elements = soup.select(selector)
-        results = [elem.get_text(strip=True) for elem in elements]
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})  # Retorne o primeiro link encontrado
         
-        return jsonify({
-            'url': url,
-            'selector': selector,
-            'results': results,
-            'count': len(results)
-        })
-    
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')  # Default to 'a' tag if not specified
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})  # Retorne o primeiro link encontrado
+        
+        return jsonify({"error": "Link not found"}), 404  # Retorne um erro se nenhum link for encontrado
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 400
 
 @app.route('/extract-links', methods=['POST'])
 @limiter.limit("20 per minute")
@@ -1297,6 +1419,220 @@ def info_post():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ================================
+# ROTAS DE WEB SCRAPING ESPECÍFICAS
+# ================================
+
+@app.route('/scrape_first_li_link', methods=['POST'])
+def scrape_first_li_link():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        first_li = soup.find('li')
+        if not first_li:
+            return jsonify({"error": "No 'li' tags found on the page"}), 404
+
+        link_element = first_li.find('a', href=True)
+        if link_element:
+            link = link_element.get('href', 'Href not found')
+            if not link.startswith(('http', 'https')):
+                link = complete_url(base_url, link)
+            return jsonify([{"link": link}])
+        
+        return jsonify({"error": "No link found in the first 'li'"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/categorias_novo', methods=['POST'])
+def categorias_novo():
+    data = request.json
+    url = data.get('url')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            article = soup.find('article', class_='widget-24x1-ultimas__article data-tb-region-item')
+            if article:
+                link = article.find('a', href=True)
+                if link and link['href']:
+                    full_link = urljoin(url, link['href'])
+                    return jsonify({"link": full_link})
+                else:
+                    return jsonify({"error": "Link not found inside the article"}), 404
+            else:
+                return jsonify({"error": "Article with specified class not found"}), 404
+        else:
+            return jsonify({"error": f"Failed to retrieve URL, status code {response.status_code}"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/scrape_website', methods=['POST'])
+def scrape_website():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36 Edge/102.0.0.0'
+    }
+
+    try:
+        with requests.Session() as s:
+            s.headers.update(headers)
+            response = s.get(url)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})
+        
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})
+        
+        return jsonify({"error": "Link not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/scrape_website_adaptado', methods=['POST'])
+def scrape_website_adaptado():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    api_key = "8a575bf7b24290865c93c646f1a476fa"
+    scraper_api_url = "https://api.scraperapi.com/"
+    params = {
+        "api_key": api_key,
+        "url": url,
+    }
+
+    try:
+        response = requests.get(scraper_api_url, params=params)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})
+        
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})
+        
+        return jsonify({"error": "Link not found"}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/scrape_with_api', methods=['POST'])
+def scrape_with_api():
+    data = request.json
+    url = data.get('url', '')
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    api_key = "8a575bf7b24290865c93c646f1a476fa"
+    scraper_api_url = "https://api.scraperapi.com/"
+    params = {
+        "api_key": api_key,
+        "url": url,
+    }
+
+    try:
+        response = requests.get(scraper_api_url, params=params)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        container = soup.find('div', attrs={'data-theme-key': 'four-across-layout'})
+        if not container:
+            return jsonify({"error": "Container with class 'four-across-layout' not found"}), 404
+
+        link_element = container.find('a', attrs={'data-vars-ga-outbound-link': True})
+        if not link_element:
+            return jsonify({"error": "No element with 'data-vars-ga-outbound-link' found"}), 404
+
+        outbound_link = link_element.get('data-vars-ga-outbound-link')
+        if not outbound_link.startswith(('http', 'https')):
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            outbound_link = urljoin(base_url, outbound_link)
+
+        return jsonify({"link": outbound_link})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 # ================================
 # ROTAS DO TELEGRAM
@@ -1514,6 +1850,7 @@ def process_audio():
 
 @app.route('/narracao', methods=['POST'])
 def narracao():
+    
     data = request.get_json()
     text = data.get("text")
     filename = data.get("filename", "narracao.mp3")
@@ -1878,6 +2215,12 @@ def programacao_aracaju_streaming():
 # ================================
 # ROTAS FINAIS E EXECUÇÃO
 # ================================
+
+# Importar configurações do Swagger
+try:
+    import swagger_docs
+except ImportError:
+    print("Swagger docs não disponível")
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
