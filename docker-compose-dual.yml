@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  flask-main-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile.main
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+      - PILLOW_SERVICE_URL=http://flask-pillow-api:5001
+    volumes:
+      - ./uploads_main:/home/app/uploads_main
+      - ./logs:/home/app/logs
+    depends_on:
+      - redis
+      - flask-pillow-api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '0.8'
+        reservations:
+          memory: 512M
+          cpus: '0.4'
+
+  flask-pillow-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.pillow
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+    volumes:
+      - ./uploads_pillow:/home/app/uploads_pillow
+      - ./logs:/home/app/logs
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-dual.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx 
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-dual.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - flask-main-api
+      - flask-pillow-api
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    driver: bridge
