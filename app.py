@@ -51,6 +51,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_cors import CORS
 import mimetypes
+import textwrap
 
 # Permite aninhar loops (necessário para Flask + asyncio)
 nest_asyncio.apply()
@@ -364,6 +365,21 @@ def save_plot_to_base64():
     image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
     plt.close()
     return image_base64
+
+def add_border_radius(img, border_radius):
+    """Adiciona border radius circular a uma imagem"""
+    # Criar máscara circular
+    mask = Image.new('L', img.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0) + img.size, fill=255, radius=border_radius)
+    
+    # Converter imagem para RGBA se necessário
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+    
+    # Aplicar máscara
+    img.putalpha(mask)
+    return img
 
 # Comentar as importações que causam conflito
 # from deepface import DeepFace
@@ -1978,59 +1994,94 @@ def process_image_3():
 
 @app.route('/process-image-2', methods=['POST'])
 def process_image_2():
-    data = request.json
-    image_url = data['url']
-    image_name = data.get('image_name', 'modified_image.jpg')
-    
-    # Novo campo para o caminho da fonte (opcional)
-    font_path_bold = data.get('font_path_bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
-
-    response = requests.get(image_url)
-    img = Image.open(BytesIO(response.content))
-    draw = ImageDraw.Draw(img)
-
-    # Adiciona textos dinamicamente
-    for i in range(1, 100):  # Limite de 100 textos
-        texto_key = f'texto{i}'
-        if texto_key in data:
-            texto = data[texto_key]
-            texto_position = data.get(f'{texto_key}_position', [0, 0])
-            texto_font_size = int(data.get(f'{texto_key}_font_size', 25))
-            texto_max_chars = int(data.get(f'{texto_key}_max_chars', 38))
-            texto_color = data.get(f'{texto_key}_color', '#FFFFFF')
-            texto_color = tuple(int(texto_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-            
-            # Usa o caminho da fonte fornecido ou o padrão
-            font = ImageFont.truetype(font_path_bold, size=texto_font_size)
-            draw_text(draw, texto, texto_position, font, texto_color, texto_max_chars)
-
-    # Adiciona imagem2 (mesmo código anterior)
-    imagem2_url = data.get('imagem2_url')
-    if imagem2_url:
-        imagem2_response = requests.get(imagem2_url)
-        imagem2 = Image.open(BytesIO(imagem2_response.content))
-        imagem2_size = tuple(data.get('imagem2_size', [100, 100]))
-        imagem2 = imagem2.resize(imagem2_size, Image.Resampling.LANCZOS)
-        imagem2_position = tuple(data.get('imagem2_position', [300, 300]))
-        imagem2_border_radius = int(data.get('imagem2_border_radius', 0))
-        if imagem2_border_radius > 0:
-            imagem2 = add_border_radius(imagem2, imagem2_border_radius)
-        img.paste(imagem2, imagem2_position, imagem2)
-
-    temp_path = image_name
-    img.save(temp_path)
-
-    @after_this_request
-    def remove_file(response):
-        try:
-            os.remove(temp_path)
-        except Exception as error:
-            app.logger.error("Erro ao remover o arquivo temporário", error)
+    """Processamento avançado de imagem com múltiplos textos e imagem secundária com border radius"""
+    try:
+        data = request.json
+        image_url = data['url']
+        image_name = data.get('image_name', 'processed_image_2.jpg')
+        
+        # Baixar imagem principal
+        response = requests.get(image_url)
+        img = Image.open(BytesIO(response.content))
+        
+        # Converter para RGB se necessário
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        draw = ImageDraw.Draw(img)
+        font_path_bold = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        
+        # Processar textos (texto1 a texto99)
+        for i in range(1, 100):
+            texto_key = f'texto{i}'
+            if texto_key in data:
+                texto = data[texto_key]
+                position = data.get(f'{texto_key}_position', [0, 0])
+                font_size = int(data.get(f'{texto_key}_font_size', 14))
+                max_chars = int(data.get(f'{texto_key}_max_chars', 50))
+                color = data.get(f'{texto_key}_color', '#000000')
+                
+                # Converter cor hex para RGB
+                color_rgb = tuple(int(color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                
+                # Carregar fonte
+                try:
+                    font = ImageFont.truetype(font_path_bold, size=font_size)
+                except:
+                    font = ImageFont.load_default()
+                
+                # Limitar texto se necessário
+                if len(texto) > max_chars:
+                    texto = texto[:max_chars] + '...'
+                
+                # Desenhar texto
+                draw.text(tuple(position), texto, fill=color_rgb, font=font)
+        
+        # Processar segunda imagem se fornecida
+        if 'imagem2_url' in data:
+            try:
+                img2_response = requests.get(data['imagem2_url'])
+                img2 = Image.open(BytesIO(img2_response.content))
+                
+                # Redimensionar segunda imagem
+                img2_size = tuple(data.get('imagem2_size', [100, 100]))
+                img2 = img2.resize(img2_size, Image.Resampling.LANCZOS)
+                
+                # Aplicar border radius se especificado
+                border_radius = data.get('imagem2_border_radius', 0)
+                if border_radius > 0:
+                    img2 = add_border_radius(img2, border_radius)
+                
+                # Posição da segunda imagem
+                img2_position = tuple(data.get('imagem2_position', [0, 0]))
+                
+                # Colar imagem com transparência se tiver border radius
+                if border_radius > 0:
+                    img.paste(img2, img2_position, img2)
+                else:
+                    img.paste(img2, img2_position)
+                    
+            except Exception as e:
+                print(f"Erro ao processar segunda imagem: {e}")
+        
+        # Salvar imagem temporariamente
+        temp_path = image_name
+        img.save(temp_path, 'JPEG', quality=95)
+        
+        @after_this_request
+        def remove_file(response):
+            try:
+                os.remove(temp_path)
+            except Exception as error:
+                app.logger.error("Erro ao remover o arquivo temporário", error)
+            return response
+        
+        response = send_file(temp_path, mimetype='image/jpeg')
+        response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
         return response
-
-    response = send_file(temp_path, mimetype='image/jpeg')
-    response.headers['Content-Disposition'] = f'attachment; filename={image_name}'
-    return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ================================
