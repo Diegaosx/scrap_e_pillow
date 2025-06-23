@@ -2047,6 +2047,417 @@ def gov_br():
         print(f"Erro ao processar o conteúdo: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/scrape_website_adaptado', methods=['POST'])
+def scrape_website_adaptado():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    # Parâmetros para a ScraperAPI
+    api_key = "8a575bf7b24290865c93c646f1a476fa"  # Substitua pela sua chave de API
+    scraper_api_url = "https://api.scraperapi.com/"
+    params = {
+        "api_key": api_key,
+        "url": url,
+    }
+
+    try:
+        # Faz a requisição para a ScraperAPI
+        response = requests.get(scraper_api_url, params=params)
+        response.raise_for_status()  # Verifica se a requisição foi bem-sucedida
+
+        # Faz o parsing do HTML retornado pela ScraperAPI
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Obtendo apenas a parte do protocolo e domínio da URL
+        parsed_url = urlparse(url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        
+        # Caso específico para o site 'moneytimes.com.br'
+        if 'moneytimes.com.br' in url:
+            news_items = soup.find_all('div', class_='news-item')
+            for news_item in news_items:
+                links = news_item.find_all('a', href=True)
+                for link in links:
+                    href = link['href']
+                    if not href.startswith(('http', 'https')):
+                        href = base_url + href
+                    return jsonify({"link": href})  # Retorne o primeiro link encontrado
+        
+        # Busca genérica com base nas tags fornecidas no corpo da requisição
+        else:
+            parent_tag = data.get('parent_tag', '')
+            parent_class = data.get('parent_class', '')
+            link_tag = data.get('link', 'a')  # Default to 'a' tag if not specified
+            if parent_tag and parent_class:
+                parents = soup.find_all(parent_tag, class_=parent_class)
+            else:
+                parents = [soup]  # Se nenhum parent_tag e parent_class forem fornecidos, buscar diretamente no soup
+
+            for parent in parents:
+                element = parent.find(link_tag, href=True)
+                if element:
+                    link = element.get('href', 'Href not found')
+                    if not link.startswith(('http', 'https')):
+                        link = base_url + link
+                    return jsonify({"link": link})  # Retorne o primeiro link encontrado
+        
+        return jsonify({"error": "Link not found"}), 404  # Retorne um erro se nenhum link for encontrado
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/info-post-adaptado', methods=['POST'])
+def info_post_adaptado():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay to be respectful to the web servers
+
+        result = {}
+        for key, value in data.items():
+            if key != 'url':
+                if key in ['direito-imagem', 'descricao']:
+                    selectors = value.split(',')
+                    content = ''
+                    for selector in selectors:
+                        selector = selector.strip()
+                        if selector.startswith('og:'):
+                            meta_tag = soup.find('meta', property=selector) or soup.find('meta', attrs={"name": selector})
+                            if meta_tag and meta_tag.get('content'):
+                                content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            element = soup.find_all(class_=selector) or soup.find_all(id=selector)
+                            if element:
+                                content = ' '.join([el.get_text(separator=' ', strip=True) for el in element])
+                                break
+                    result[key] = content if content else "© 2025"
+                elif key == 'imagem':
+                    image_values = value.split(',')
+                    image_content = ''
+                    for image_value in image_values:
+                        image_value = image_value.strip()
+                        if image_value.startswith('og:'):
+                            meta_tag = soup.find('meta', property=image_value) or soup.find('meta', attrs={"name": image_value})
+                            if meta_tag and meta_tag.get('content'):
+                                image_content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            img_elements = soup.find_all('img', class_=image_value) or soup.find_all('img', id=image_value)
+                            if img_elements:
+                                image_content = [complete_url(url, img['src']).split('?')[0] for img in img_elements]
+                                break
+                    result[key] = image_content if image_content else "© 2025"
+                elif key == 'titulo':
+                    element = soup.find('h1', class_=value) or soup.find('title')
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                elif key == 'conteudo':
+                    element = soup.find(id=value) or soup.find(class_=value)
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                else:
+                    elements = soup.find_all(class_=value) or soup.find_all(id=value)
+                    if elements:
+                        result[key] = [element.text.strip() for element in elements]
+                    else:
+                        result[key] = "© 2025"
+
+        favicon_link = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
+        if favicon_link:
+            result['favicon'] = complete_url(url, favicon_link['href'])
+        else:
+            result['favicon'] = "Favicon not found"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/info-post-adaptado-novo', methods=['POST'])
+def info_post_adaptado_novo():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay to be respectful to the web servers
+
+        result = {}
+        for key, value in data.items():
+            if key != 'url':
+                if key in ['direito-imagem', 'descricao']:
+                    selectors = value.split(',')
+                    content = ''
+                    for selector in selectors:
+                        selector = selector.strip()
+                        if selector.startswith('og:'):
+                            meta_tag = soup.find('meta', property=selector) or soup.find('meta', attrs={"name": selector})
+                            if meta_tag and meta_tag.get('content'):
+                                content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            if selector == 'figcaption':
+                                figcaption_element = soup.find('figcaption')
+                                if figcaption_element:
+                                    content = figcaption_element.text.strip()
+                                    break
+                            else:
+                                element = soup.find_all(class_=selector) or soup.find_all(id=selector)
+                                if element:
+                                    content = ' '.join([el.get_text(separator=' ', strip=True) for el in element])
+                                    break
+                    result[key] = content if content else "© 2025"
+                elif key == 'imagem':
+                    image_values = value.split(',')
+                    image_content = ''
+                    for image_value in image_values:
+                        image_value = image_value.strip()
+                        if image_value.startswith('og:'):
+                            meta_tag = soup.find('meta', property=image_value) or soup.find('meta', attrs={"name": image_value})
+                            if meta_tag and meta_tag.get('content'):
+                                image_content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            img_elements = soup.find_all('img', class_=image_value) or soup.find_all('img', id=image_value)
+                            if img_elements:
+                                image_content = [complete_url(url, img['src']).split('?')[0] for img in img_elements]
+                                break
+                    result[key] = image_content if image_content else "© 2025"
+                elif key == 'titulo':
+                    element = soup.find('h1', class_=value) or soup.find('title')
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                elif key == 'conteudo':
+                    element = soup.find(id=value) or soup.find(class_=value)
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                else:
+                    elements = soup.find_all(class_=value) or soup.find_all(id=value)
+                    if elements:
+                        result[key] = [element.text.strip() for element in elements]
+                    else:
+                        result[key] = "© 2025"
+
+        favicon_link = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
+        if favicon_link:
+            result['favicon'] = complete_url(url, favicon_link['href'])
+        else:
+            result['favicon'] = "Favicon not found"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/info-post-adaptado-novo-2', methods=['POST'])
+def info_post_adaptado_novo_2():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay to be respectful to the web servers
+
+        result = {}
+        for key, value in data.items():
+            if key != 'url':
+                if key in ['direito-imagem', 'descricao']:
+                    selectors = value.split(',')
+                    content = ''
+                    for selector in selectors:
+                        selector = selector.strip()
+                        if selector.startswith('og:'):
+                            meta_tag = soup.find('meta', property=selector) or soup.find('meta', attrs={"name": selector})
+                            if meta_tag and meta_tag.get('content'):
+                                content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            # Procurar pelo small dentro de imgPrinc
+                            if selector == 'small':
+                                small_element = soup.select_one('div.imgPrinc small')
+                                if small_element:
+                                    content = small_element.text.strip()
+                                    break
+                            elif selector == 'figcaption':
+                                figcaption_element = soup.find('figcaption')
+                                if figcaption_element:
+                                    content = figcaption_element.text.strip()
+                                    break
+                            else:
+                                element = soup.find_all(class_=selector) or soup.find_all(id=selector)
+                                if element:
+                                    content = ' '.join([el.get_text(separator=' ', strip=True) for el in element])
+                                    break
+                    result[key] = content if content else "© 2025"
+                elif key == 'imagem':
+                    image_values = value.split(',')
+                    image_content = ''
+                    for image_value in image_values:
+                        image_value = image_value.strip()
+                        if image_value.startswith('og:'):
+                            meta_tag = soup.find('meta', property=image_value) or soup.find('meta', attrs={"name": image_value})
+                            if meta_tag and meta_tag.get('content'):
+                                image_content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            img_elements = soup.find_all('img', class_=image_value) or soup.find_all('img', id=image_value)
+                            if img_elements:
+                                image_content = [complete_url(url, img['src']).split('?')[0] for img in img_elements]
+                                break
+                    result[key] = image_content if image_content else "© 2025"
+                elif key == 'titulo':
+                    element = soup.find('h1', class_=value) or soup.find('title')
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                elif key == 'conteudo':
+                    element = soup.find(id=value) or soup.find(class_=value)
+                    if element:
+                        result[key] = element.text.strip()
+                    else:
+                        result[key] = "© 2025"
+                else:
+                    elements = soup.find_all(class_=value) or soup.find_all(id=value)
+                    if elements:
+                        result[key] = [element.text.strip() for element in elements]
+                    else:
+                        result[key] = "© 2025"
+
+        # Captura o favicon, se houver
+        favicon_link = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
+        if favicon_link:
+            result['favicon'] = complete_url(url, favicon_link['href'])
+        else:
+            result['favicon'] = "Favicon not found"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/info-post-adaptado-us', methods=['POST'])
+def info_post_adaptado_us():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay to be respectful to the web servers
+
+        result = {}
+        for key, value in data.items():
+            if key != 'url':
+                if key == 'imagem':
+                    # Tratamento para a chave 'imagem'
+                    image_value = value.split(',')
+                    image_content = ''
+                    for iv in image_value:
+                        iv = iv.strip()
+                        if iv.startswith('og:'):
+                            meta_tag = soup.find('meta', property=iv) or soup.find('meta', attrs={"name": iv})
+                            if meta_tag and meta_tag.get('content'):
+                                image_content = meta_tag.get('content').strip()
+                                break
+                        else:
+                            img_elements = soup.find_all('img', class_=iv) or soup.find_all('img', id=iv)
+                            if img_elements:
+                                image_content = [complete_url(url, img['src']).split('?')[0] for img in img_elements]
+                                break
+                    result[key] = image_content if image_content else "Image not found"
+                elif key == 'direito-imagem':
+                    # Tratamento para a chave 'direito-imagem'
+                    fig_elements = soup.find_all(value)
+                    if fig_elements:
+                        fig_content = ' '.join([fig.get_text(separator=' ', strip=True) for fig in fig_elements])
+                    else:
+                        fig_content = "Text not found"
+                    result[key] = fig_content
+                elif key in ['titulo', 'descricao']:
+                    # Tratamento para 'titulo' e 'descricao'
+                    og_value = value if value.startswith('og:') else None
+                    if og_value:
+                        og_property = og_value.split(':')[1]
+                        meta_tag = soup.find('meta', property=f"og:{og_property}") or soup.find('meta', attrs={"name": f"og:{og_property}"})
+                        if meta_tag and meta_tag.get('content'):
+                            result[key] = meta_tag.get('content', '')
+                        else:
+                            result[key] = "Element not found"
+                    else:
+                        element = soup.find(value)
+                        if element:
+                            result[key] = element.text.strip()
+                        else:
+                            result[key] = "Element not found"
+                elif key == 'conteudo':
+                    # Tratamento para 'conteudo'
+                    content_element = soup.find(id=value) or soup.find(class_=value)
+                    if content_element:
+                        result[key] = content_element.text.strip()
+                    else:
+                        result[key] = "Content not found"
+                else:
+                    # Tratamento genérico para outras chaves
+                    generic_elements = soup.find_all(class_=value) or soup.find_all(id=value)
+                    if generic_elements:
+                        result[key] = ' '.join([element.text.strip() for element in generic_elements])
+                    else:
+                        result[key] = "Element not found"
+
+        # Tratamento para 'favicon'
+        favicon_link = soup.find("link", rel=lambda x: x and 'icon' in x.lower())
+        if favicon_link:
+            result['favicon'] = complete_url(url, favicon_link['href'])
+        else:
+            result['favicon'] = "Favicon not found"
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/process-image-3', methods=['POST'])
 def process_image_3():
     data = request.json
