@@ -2,7 +2,7 @@
 Configuração do Swagger para documentação da API
 """
 
-from flask import jsonify, render_template_string
+from flask import jsonify
 from app import app
 
 @app.route('/swagger.json', methods=['GET'])
@@ -12,7 +12,7 @@ def swagger_spec():
         "openapi": "3.0.0",
         "info": {
             "title": "Flask Super API",
-            "description": "API unificada com 130+ rotas para processamento de imagens, web scraping, Telegram, YouTube e muito mais",
+            "description": "API unificada com 129+ rotas para processamento de imagens, web scraping, Telegram, YouTube e muito mais",
             "version": "2.0.0",
             "contact": {
                 "name": "Flask Super API",
@@ -53,6 +53,32 @@ def swagger_spec():
                     }
                 }
             },
+            "/upload": {
+                "post": {
+                    "summary": "Upload de arquivo",
+                    "description": "Faz upload de um arquivo de imagem",
+                    "requestBody": {
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Upload realizado com sucesso"
+                        }
+                    }
+                }
+            },
             "/process-image": {
                 "post": {
                     "summary": "Processar imagem",
@@ -76,40 +102,6 @@ def swagger_spec():
                                         }
                                     },
                                     "required": ["url", "titulo", "titulo_position"]
-                                }
-                            }
-                        }
-                    },
-                    "responses": {
-                        "200": {
-                            "description": "Imagem processada com sucesso"
-                        }
-                    }
-                }
-            },
-            "/process-image-2": {
-                "post": {
-                    "summary": "Processar imagem avançado",
-                    "description": "Processa uma imagem com múltiplos textos e segunda imagem com border radius",
-                    "requestBody": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "url": {"type": "string"},
-                                        "image_name": {"type": "string"},
-                                        "texto1": {"type": "string"},
-                                        "texto1_position": {"type": "array", "items": {"type": "integer"}},
-                                        "texto1_font_size": {"type": "integer"},
-                                        "texto1_max_chars": {"type": "integer"},
-                                        "texto1_color": {"type": "string"},
-                                        "imagem2_url": {"type": "string"},
-                                        "imagem2_size": {"type": "array", "items": {"type": "integer"}},
-                                        "imagem2_position": {"type": "array", "items": {"type": "integer"}},
-                                        "imagem2_border_radius": {"type": "integer"}
-                                    },
-                                    "required": ["url"]
                                 }
                             }
                         }
@@ -164,12 +156,12 @@ def swagger_spec():
 @app.route('/docs', methods=['GET'])
 def swagger_ui():
     """Interface Swagger UI"""
-    swagger_template = '''
+    return '''
     <!DOCTYPE html>
     <html>
     <head>
         <title>Flask Super API - Documentação</title>
-        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3.25.0/swagger-ui.css" />
         <style>
             .swagger-ui .topbar { 
                 background-color: #667eea; 
@@ -177,15 +169,11 @@ def swagger_ui():
             }
             .swagger-ui .topbar .download-url-wrapper { display: none; }
             .swagger-ui .info .title { color: #333; }
-            .swagger-ui .scheme-container { 
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-            }
         </style>
     </head>
     <body>
         <div id="swagger-ui"></div>
-        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
+        <script src="https://unpkg.com/swagger-ui-dist@3.25.0/swagger-ui-bundle.js"></script>
         <script>
             SwaggerUIBundle({
                 url: '/swagger.json',
@@ -203,4 +191,3 @@ def swagger_ui():
     </body>
     </html>
     '''
-    return render_template_string(swagger_template)
