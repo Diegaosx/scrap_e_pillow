@@ -1951,6 +1951,101 @@ def programacao_aracaju_streaming():
     
     return jsonify({"streaming_now": None})
 
+@app.route('/customizado-2', methods=['POST'])
+def customizado_2():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay to be respectful to the web servers
+
+        # Busca pelo conteúdo do artigo usando a classe correta
+        content_div = soup.find(id=data.get('conteudo')) or soup.find(class_=data.get('conteudo'))
+
+        if content_div:
+            # Processamento dos links
+            domain = urlparse(url).netloc
+            for a_tag in content_div.find_all('a', href=True):
+                link = a_tag['href']
+                # Join relative URLs to base URL
+                link = urljoin(url, link)
+                if urlparse(link).netloc == domain:
+                    new_tag = soup.new_tag("b")
+                    new_tag.string = a_tag.get_text()
+                    a_tag.replace_with(new_tag)
+
+            # Processa exclusões de elementos indesejados
+            exclusions = data.get('excluir-do-conteudo', '').split(',')
+            for exclusion in exclusions:
+                for elem in content_div.find_all(exclusion.strip()):
+                    elem.decompose()
+
+            class_exclusions = data.get('remover-classe', '').split(',')
+            for class_exclusion in class_exclusions:
+                for elem in content_div.find_all(class_=class_exclusion.strip()):
+                    elem.decompose()
+
+            id_exclusions = data.get('remover-id', '').split(',')
+            for id_exclusion in id_exclusions:
+                for elem in content_div.find_all(True, {'id': lambda x: x and x.startswith(id_exclusion.strip())}):
+                    elem.decompose()
+
+            # Remover scripts, styles, iframes
+            for tag in content_div.find_all(['script', 'style', 'iframe']):
+                tag.decompose()
+
+            # Converte o conteúdo processado para HTML string
+            content_html = str(content_div)
+            return jsonify({"conteudo": content_html})
+        else:
+            return jsonify({"error": "Content div not found"}), 404
+
+    except Exception as e:
+        print(f"Erro ao processar o conteúdo: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/gov_br', methods=['POST'])
+def gov_br():
+    data = request.json
+    url = data.get('url', '')
+
+    if not url:
+        return jsonify({"error": "URL is required"}), 400
+
+    try:
+        session = requests.Session()
+        session.headers.update({'User-Agent': random.choice(USER_AGENTS)})
+        response = session.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        time.sleep(2)  # Delay para ser respeitoso com os servidores web
+
+        content_html = ""
+        content_elements = soup.find_all(class_=lambda x: x and x.startswith('Paragraph')) + soup.find_all('img')
+        for element in content_elements:
+            if 'Paragraph' in element.get('class', []) and element.name == 'p':
+                content_html += f"<p>{element.get_text()}</p>"
+            elif element.name == 'img':
+                if element.parent.get('id') == 'media':
+                    continue  # Ignora a imagem com ID 'media'
+                img_src = element.get('src', '')
+                if img_src:
+                    content_html += f'<img src="{img_src}" alt="{element.get("alt", "")}">'
+            # Adicione outras condições conforme necessário
+
+        return jsonify({"conteudo": content_html})
+
+    except Exception as e:
+        print(f"Erro ao processar o conteúdo: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/process-image-3', methods=['POST'])
 def process_image_3():
