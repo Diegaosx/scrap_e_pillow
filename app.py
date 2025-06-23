@@ -23,8 +23,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from requests_html import HTMLSession
 import asyncio
 from requests_html import AsyncHTMLSession
-from google.auth.transport.requests import Request as GoogleAuthRequest
-from google.oauth2 import service_account
 from io import BytesIO
 import hashlib
 import subprocess
@@ -993,7 +991,11 @@ def screenshot():
         recife_time = gmt_time.astimezone(recife_tz)
         recife_time_str = recife_time.strftime("%Y-%m-%d %H:%M:%S %Z")
 
-        image_url = "https://imagem-post.diegao.com.br/imagens-binarias/screenshot.png"
+        # Substituir esta linha:
+        # image_url = "https://imagem-post.diegao.com.br/imagens-binarias/screenshot.png"
+
+        # Por esta (usando o domínio correto):
+        image_url = "https://s3.diegao.com.br/imagens-binarias/screenshot.png"
         return jsonify({
             "message": "Screenshot saved successfully",
             "url": image_url,
